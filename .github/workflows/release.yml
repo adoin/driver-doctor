@@ -88,6 +88,25 @@ jobs:
           retention-days: 3
           path: cargo-test.log
 
+      - name: Annotate Unix test log
+        if: failure() && runner.os != 'Windows'
+        shell: bash
+        run: |
+          if [ -f cargo-test.log ]; then
+            message=$(tail -n 120 cargo-test.log | sed -e ':a' -e 'N' -e '$!ba' -e 's/%/%25/g' -e 's/\r/%0D/g' -e 's/\n/%0A/g')
+            echo "::error title=Cargo test log::$message"
+          fi
+
+      - name: Annotate Windows test log
+        if: failure() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (Test-Path cargo-test.log) {
+            $message = (Get-Content cargo-test.log -Tail 120) -join "`n"
+            $message = $message.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Output "::error title=Cargo test log::$message"
+          }
+
       - name: Build release binary
         run: cargo build --release
 
