@@ -81,7 +81,7 @@ jobs:
 
       - name: Upload test log
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: cargo-test-log-${{ matrix.name }}
           if-no-files-found: ignore
@@ -130,7 +130,7 @@ jobs:
           tar -C dist/package -czf "dist/${{ matrix.package }}" "${{ matrix.binary }}"
 
       - name: Upload release package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.artifact }}
           if-no-files-found: error
@@ -147,7 +147,7 @@ jobs:
 
     steps:
       - name: Download release packages
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           pattern: driver-doctor-*
           path: release-assets
