@@ -1,0 +1,28 @@
+[package]
+name = "driver-doctor"
+version = "0.1.0"
+edition = "2021"
+description = "Windows 磁盘空间分析工具，支持 AI 清理建议"
+
+[dependencies]
+eframe = { version = "0.31", default-features = false, features = ["default_fonts", "glow"] }
+egui = "0.31"
+jwalk = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
+dirs = "6"
+rfd = "0.15"
+chrono = "0.4"
+open = "5"
+fs2 = "0.4"
+rayon = "1"
+num_cpus = "1"
+egui_extras = "0.31"
+winapi = { version = "0.3", features = ["fileapi", "shellapi", "winuser", "wingdi", "winnt"] }
+
+[profile.release]
+opt-level = 3
+lto = true
