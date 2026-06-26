@@ -2,6 +2,8 @@ use egui::{Color32, CornerRadius, Painter, Rect, Stroke, Vec2};
 
 const HEALTH_CHECK_ICON_SIZE: [usize; 2] = [32, 32];
 const HEALTH_CHECK_ICON_RGBA: &[u8] = include_bytes!("assets/health_check_icon_32.rgba");
+const APP_ICON_SIZE: u32 = 256;
+const APP_ICON_RGBA: &[u8] = include_bytes!("assets/app_icon_256.rgba");
 
 /// Shell 图标加载失败时的简易占位
 pub fn paint_fallback_icon(painter: &Painter, rect: Rect, is_dir: bool, is_drive: bool) {
@@ -96,6 +98,14 @@ pub fn health_check_button(
         .stroke(Stroke::NONE)
 }
 
+pub fn app_icon_data() -> egui::IconData {
+    egui::IconData {
+        rgba: APP_ICON_RGBA.to_vec(),
+        width: APP_ICON_SIZE,
+        height: APP_ICON_SIZE,
+    }
+}
+
 pub fn bar_color(index: usize) -> Color32 {
     const PALETTE: [Color32; 8] = [
         Color32::from_rgb(55, 95, 160),
@@ -120,5 +130,17 @@ mod tests {
             HEALTH_CHECK_ICON_RGBA.len(),
             HEALTH_CHECK_ICON_SIZE[0] * HEALTH_CHECK_ICON_SIZE[1] * 4
         );
+    }
+
+    #[test]
+    fn app_icon_asset_has_expected_rgba_size() {
+        assert_eq!(
+            APP_ICON_RGBA.len(),
+            APP_ICON_SIZE as usize * APP_ICON_SIZE as usize * 4
+        );
+        let icon = app_icon_data();
+        assert_eq!(icon.width, APP_ICON_SIZE);
+        assert_eq!(icon.height, APP_ICON_SIZE);
+        assert!(!icon.rgba.is_empty());
     }
 }

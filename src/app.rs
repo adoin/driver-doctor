@@ -4,7 +4,7 @@ use crate::ai::{
     native_search_profile_label, test_connection, HealthCheckReply,
 };
 use crate::config::{AiConfig, AppConfig};
-use crate::icons::{bar_color, health_check_button, size_bar};
+use crate::icons::{app_icon_data, bar_color, health_check_button, size_bar};
 use crate::scan::{
     format_size, list_drives_with_space, quick_list_directory, scan_all_drives, scan_directory,
     scan_directory_with_tree, DriveInfo, ScanEntry, ScanNode, ScanProgress, ScanResult,
@@ -2714,7 +2714,8 @@ pub fn run() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1200.0, 720.0])
-            .with_title("Driver Doctor — 磁盘空间分析"),
+            .with_title("Driver Doctor — 磁盘空间分析")
+            .with_icon(app_icon_data()),
         ..Default::default()
     };
 
