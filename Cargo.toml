@@ -23,6 +23,9 @@ num_cpus = "1"
 egui_extras = "0.31"
 winapi = { version = "0.3", features = ["fileapi", "shellapi", "winuser", "wingdi", "winnt"] }
 
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1.31"
+
 [profile.release]
 opt-level = 3
 lto = true
