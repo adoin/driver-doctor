@@ -66,7 +66,27 @@ jobs:
             libwayland-dev
 
       - name: Test
-        run: cargo test
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test 2>&1 | tee cargo-test.log
+
+      - name: Test
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cargo test *>&1 | Tee-Object -FilePath cargo-test.log
+          exit $LASTEXITCODE
+
+      - name: Upload test log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-test-log-${{ matrix.name }}
+          if-no-files-found: ignore
+          retention-days: 3
+          path: cargo-test.log
 
       - name: Build release binary
         run: cargo build --release
