@@ -23,17 +23,17 @@ jobs:
             os: windows-latest
             binary: driver-doctor.exe
             artifact: driver-doctor-windows-x64
-            package: driver-doctor-${{ github.ref_name }}-windows-x64.zip
+            asset: driver-doctor-${{ github.ref_name }}-windows-x64.exe
           - name: macos
             os: macos-latest
             binary: driver-doctor
             artifact: driver-doctor-macos
-            package: driver-doctor-${{ github.ref_name }}-macos.tar.gz
+            asset: driver-doctor-${{ github.ref_name }}-macos
           - name: linux-x64
             os: ubuntu-latest
             binary: driver-doctor
             artifact: driver-doctor-linux-x64
-            package: driver-doctor-${{ github.ref_name }}-linux-x64.tar.gz
+            asset: driver-doctor-${{ github.ref_name }}-linux-x64
 
     steps:
       - name: Checkout
@@ -110,33 +110,30 @@ jobs:
       - name: Build release binary
         run: cargo build --release
 
-      - name: Package Windows binary
+      - name: Prepare Windows binary
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $packageDir = "dist\driver-doctor-${{ github.ref_name }}-${{ matrix.name }}"
-          New-Item -ItemType Directory -Force $packageDir | Out-Null
-          Copy-Item "target\release\${{ matrix.binary }}" "$packageDir\${{ matrix.binary }}"
-          Compress-Archive -Path $packageDir -DestinationPath "dist\${{ matrix.package }}" -Force
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item "target\release\${{ matrix.binary }}" "dist\${{ matrix.asset }}"
 
-      - name: Package Unix binary
+      - name: Prepare Unix binary
         if: runner.os != 'Windows'
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p dist/package
-          cp "target/release/${{ matrix.binary }}" "dist/package/${{ matrix.binary }}"
-          chmod +x "dist/package/${{ matrix.binary }}"
-          tar -C dist/package -czf "dist/${{ matrix.package }}" "${{ matrix.binary }}"
+          mkdir -p dist
+          cp "target/release/${{ matrix.binary }}" "dist/${{ matrix.asset }}"
+          chmod +x "dist/${{ matrix.asset }}"
 
-      - name: Upload release package
+      - name: Upload release asset
         uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.artifact }}
           if-no-files-found: error
           retention-days: 3
-          path: dist/${{ matrix.package }}
+          path: dist/${{ matrix.asset }}
 
   release:
     name: Publish GitHub release
@@ -150,7 +147,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Download release packages
+      - name: Download release assets
         uses: actions/download-artifact@v7
         with:
           pattern: driver-doctor-*
