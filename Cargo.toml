@@ -1,6 +1,6 @@
 [package]
 name = "driver-doctor"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2021"
 description = "Windows 磁盘空间分析工具，支持 AI 清理建议"
 
