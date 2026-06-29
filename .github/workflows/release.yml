@@ -115,9 +115,10 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          New-Item -ItemType Directory -Force dist | Out-Null
-          Copy-Item "target\release\${{ matrix.binary }}" "dist\${{ matrix.binary }}"
-          Compress-Archive -Path "dist\${{ matrix.binary }}" -DestinationPath "dist\${{ matrix.package }}" -Force
+          $packageDir = "dist\driver-doctor-${{ github.ref_name }}-${{ matrix.name }}"
+          New-Item -ItemType Directory -Force $packageDir | Out-Null
+          Copy-Item "target\release\${{ matrix.binary }}" "$packageDir\${{ matrix.binary }}"
+          Compress-Archive -Path $packageDir -DestinationPath "dist\${{ matrix.package }}" -Force
 
       - name: Package Unix binary
         if: runner.os != 'Windows'
