@@ -237,6 +237,102 @@ fn apply_child_percentages(children: &mut [ScanNode]) {
     }
 }
 
+pub fn find_scan_node<'a>(root: &'a ScanNode, path: &Path) -> Option<&'a ScanNode> {
+    if root.entry.path == path {
+        return Some(root);
+    }
+    root.children
+        .iter()
+        .find_map(|child| find_scan_node(child, path))
+}
+
+pub fn entries_for_tree_path(root: &ScanNode, path: &Path) -> Option<Vec<ScanEntry>> {
+    let node = find_scan_node(root, path)?;
+    if node.entry.is_dir {
+        Some(
+            node.children
+                .iter()
+                .map(|child| child.entry.clone())
+                .collect(),
+        )
+    } else {
+        Some(vec![node.entry.clone()])
+    }
+}
+
+pub fn replace_scan_subtree(root: &mut ScanNode, replacement: ScanNode) -> bool {
+    let mut replacement = Some(replacement);
+    replace_scan_subtree_from_slot(root, &mut replacement)
+}
+
+pub fn replace_scan_subtree_from_slot(
+    root: &mut ScanNode,
+    replacement: &mut Option<ScanNode>,
+) -> bool {
+    let Some(target_path) = replacement.as_ref().map(|node| node.entry.path.clone()) else {
+        return false;
+    };
+
+    let replaced = replace_scan_subtree_inner(root, replacement, &target_path);
+    if replaced {
+        recalculate_scan_node(root);
+    }
+    replaced
+}
+
+fn replace_scan_subtree_inner(
+    root: &mut ScanNode,
+    replacement: &mut Option<ScanNode>,
+    path: &Path,
+) -> bool {
+    if root.entry.path == path {
+        if let Some(node) = replacement.take() {
+            *root = node;
+        }
+        return true;
+    }
+
+    for child in &mut root.children {
+        if replace_scan_subtree_inner(child, replacement, path) {
+            return true;
+        }
+    }
+    false
+}
+
+fn recalculate_scan_node(node: &mut ScanNode) {
+    if !node.entry.is_dir {
+        node.entry.folder_count = 0;
+        node.entry.file_count = 1;
+        return;
+    }
+
+    for child in &mut node.children {
+        recalculate_scan_node(child);
+    }
+    node.children
+        .sort_by(|a, b| b.entry.size.cmp(&a.entry.size));
+    apply_child_percentages(&mut node.children);
+
+    node.entry.size = node.children.iter().map(|child| child.entry.size).sum();
+    node.entry.allocated = node
+        .children
+        .iter()
+        .map(|child| child.entry.allocated)
+        .sum();
+    node.entry.file_count = node
+        .children
+        .iter()
+        .map(|child| child.entry.file_count)
+        .sum();
+    node.entry.folder_count = node
+        .children
+        .iter()
+        .filter(|child| child.entry.is_dir)
+        .map(|child| 1 + child.entry.folder_count)
+        .sum();
+}
+
 fn scan_node(
     path: &Path,
     name: String,
@@ -556,5 +652,160 @@ mod tests {
             .any(|node| node.entry.name == "AppData"));
 
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn entries_for_path_uses_cached_tree_children() {
+        let root_path = PathBuf::from(r"C:\");
+        let users_path = root_path.join("Users");
+        let admin_path = users_path.join("Admin");
+        let tree = node(
+            &root_path,
+            "C:",
+            true,
+            120,
+            120,
+            2,
+            2,
+            vec![node(
+                &users_path,
+                "Users",
+                true,
+                120,
+                120,
+                2,
+                1,
+                vec![node(&admin_path, "Admin", true, 40, 40, 1, 0, vec![])],
+            )],
+        );
+
+        let entries = entries_for_tree_path(&tree, &users_path).unwrap();
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, "Admin");
+        assert_eq!(entries[0].path, admin_path);
+    }
+
+    #[test]
+    fn replace_subtree_updates_ancestor_totals_and_child_percentages() {
+        let root_path = PathBuf::from(r"C:\");
+        let a_path = root_path.join("a");
+        let d_path = a_path.join("d");
+        let e_path = a_path.join("e");
+        let mut tree = node(
+            &root_path,
+            "C:",
+            true,
+            125,
+            125,
+            12,
+            3,
+            vec![node(
+                &a_path,
+                "a",
+                true,
+                125,
+                125,
+                12,
+                2,
+                vec![
+                    node(
+                        &d_path,
+                        "d",
+                        true,
+                        5,
+                        5,
+                        5,
+                        0,
+                        vec![node(
+                            &d_path.join("cache.bin"),
+                            "cache.bin",
+                            false,
+                            5,
+                            5,
+                            1,
+                            0,
+                            vec![],
+                        )],
+                    ),
+                    node(
+                        &e_path,
+                        "e",
+                        true,
+                        120,
+                        120,
+                        7,
+                        0,
+                        vec![node(
+                            &e_path.join("data.bin"),
+                            "data.bin",
+                            false,
+                            120,
+                            120,
+                            1,
+                            0,
+                            vec![],
+                        )],
+                    ),
+                ],
+            )],
+        );
+        let replacement = node(
+            &d_path,
+            "d",
+            true,
+            4,
+            4,
+            4,
+            0,
+            vec![node(
+                &d_path.join("new.bin"),
+                "new.bin",
+                false,
+                4,
+                4,
+                1,
+                0,
+                vec![],
+            )],
+        );
+
+        assert!(replace_scan_subtree(&mut tree, replacement));
+
+        assert_eq!(tree.entry.size, 124);
+        assert_eq!(tree.entry.file_count, 2);
+        let a = find_scan_node(&tree, &a_path).unwrap();
+        assert_eq!(a.entry.size, 124);
+        assert_eq!(a.entry.file_count, 2);
+        let d = find_scan_node(&tree, &d_path).unwrap();
+        assert_eq!(d.entry.size, 4);
+        assert_eq!(d.entry.percent, 4.0 / 124.0 * 100.0);
+        let e = find_scan_node(&tree, &e_path).unwrap();
+        assert_eq!(e.entry.percent, 120.0 / 124.0 * 100.0);
+    }
+
+    fn node(
+        path: &Path,
+        name: &str,
+        is_dir: bool,
+        size: u64,
+        allocated: u64,
+        file_count: u64,
+        folder_count: u64,
+        children: Vec<ScanNode>,
+    ) -> ScanNode {
+        ScanNode {
+            entry: ScanEntry {
+                name: name.into(),
+                path: path.to_path_buf(),
+                is_dir,
+                size,
+                allocated,
+                file_count,
+                folder_count,
+                percent: 0.0,
+            },
+            children,
+        }
     }
 }

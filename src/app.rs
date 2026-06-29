@@ -6,8 +6,9 @@ use crate::ai::{
 use crate::config::{AiConfig, AppConfig};
 use crate::icons::{app_icon_data, bar_color, health_check_button, size_bar};
 use crate::scan::{
-    format_size, list_drives_with_space, quick_list_directory, scan_all_drives, scan_directory,
-    scan_directory_with_tree, DriveInfo, ScanEntry, ScanNode, ScanProgress, ScanResult,
+    entries_for_tree_path, format_size, list_drives_with_space, quick_list_directory,
+    replace_scan_subtree_from_slot, scan_all_drives, scan_directory, scan_directory_with_tree,
+    DriveInfo, ScanEntry, ScanNode, ScanProgress, ScanResult,
 };
 use crate::shell_icons::{drive_icon_path, ShellIconCache};
 use crate::structure::{
@@ -510,6 +511,13 @@ enum FileListRow {
     },
 }
 
+#[derive(Clone, Debug)]
+enum ScanDoneScope {
+    ReplaceRoot,
+    RefreshSubtree(PathBuf),
+    FullScan,
+}
+
 enum ScanMsg {
     Progress {
         generation: u64,
@@ -517,6 +525,7 @@ enum ScanMsg {
     },
     Done {
         generation: u64,
+        scope: ScanDoneScope,
         result: Result<ScanResult, String>,
     },
 }
@@ -675,11 +684,43 @@ impl DriverDoctorApp {
         if self.scanning {
             self.scan_cancel.store(true, Ordering::Relaxed);
         }
+        if self.show_cached_tree_path(path.clone()) {
+            self.start_pending_health_check_if_ready();
+            return;
+        }
         self.view_mode = ViewMode::Directory;
         self.scan_path = path.display().to_string();
         self.config.last_scan_path = self.scan_path.clone();
         self.config.save();
         self.start_scan_path(path);
+    }
+
+    fn show_cached_tree_path(&mut self, path: PathBuf) -> bool {
+        let Some(entries) = self
+            .scan_tree
+            .as_ref()
+            .and_then(|tree| entries_for_tree_path(tree, &path))
+        else {
+            return false;
+        };
+
+        self.view_mode = ViewMode::Directory;
+        self.scan_path = path.display().to_string();
+        self.config.last_scan_path = self.scan_path.clone();
+        self.config.save();
+        self.entries = entries;
+        self.selected = None;
+        self.expanded_folded.clear();
+        self.scanning = false;
+        self.scan_rx = None;
+        self.scan_started_at = None;
+        self.scanned_files = 0;
+        self.scan_status = format!(
+            "已从缓存展开 {}，共 {} 项",
+            path.display(),
+            self.entries.len()
+        );
+        true
     }
 
     fn start_scan_path(&mut self, path: PathBuf) {
@@ -712,7 +753,50 @@ impl DriverDoctorApp {
                     progress: p,
                 });
             });
-            let _ = tx.send(ScanMsg::Done { generation, result });
+            let _ = tx.send(ScanMsg::Done {
+                generation,
+                scope: ScanDoneScope::ReplaceRoot,
+                result,
+            });
+        });
+    }
+
+    fn start_refresh_current_path(&mut self) {
+        if self.view_mode != ViewMode::Directory || self.scan_path.is_empty() {
+            return;
+        }
+        let path = PathBuf::from(&self.scan_path);
+        if self.scanning {
+            self.scan_cancel.store(true, Ordering::Relaxed);
+        }
+
+        self.scan_generation += 1;
+        let generation = self.scan_generation;
+        self.scanning = true;
+        self.scan_started_at = Some(Instant::now());
+        self.scan_cancel = Arc::new(AtomicBool::new(false));
+        self.selected = None;
+        self.expanded_folded.clear();
+        self.scanned_files = 0;
+        self.scan_status = format!("正在刷新 {} 及其后代...", path.display());
+
+        let cancel = self.scan_cancel.clone();
+        let (tx, rx) = mpsc::channel();
+        self.scan_rx = Some(rx);
+        let refresh_path = path.clone();
+
+        thread::spawn(move || {
+            let result = scan_directory_with_tree(&path, &cancel, |p| {
+                let _ = tx.send(ScanMsg::Progress {
+                    generation,
+                    progress: p,
+                });
+            });
+            let _ = tx.send(ScanMsg::Done {
+                generation,
+                scope: ScanDoneScope::RefreshSubtree(refresh_path),
+                result,
+            });
         });
     }
 
@@ -775,7 +859,11 @@ impl DriverDoctorApp {
                 entries,
                 tree: None,
             });
-            let _ = tx.send(ScanMsg::Done { generation, result });
+            let _ = tx.send(ScanMsg::Done {
+                generation,
+                scope: ScanDoneScope::FullScan,
+                result,
+            });
         });
     }
 
@@ -803,13 +891,16 @@ impl DriverDoctorApp {
                     self.scanned_files = progress.scanned_files;
                     self.scan_status = progress.current_path;
                 }
-                ScanMsg::Done { generation, result } if generation == self.scan_generation => {
+                ScanMsg::Done {
+                    generation,
+                    scope,
+                    result,
+                } if generation == self.scan_generation => {
                     done_generation = Some(generation);
                     let elapsed = self.scan_started_at;
                     match result {
                         Ok(scan_result) => {
-                            self.entries = scan_result.entries;
-                            self.scan_tree = scan_result.tree;
+                            self.apply_scan_result(scope, scan_result);
                             completed_ok = true;
                             let mut msg = format!("完成，共 {} 项", self.entries.len());
                             if let Some(t) = elapsed {
@@ -842,6 +933,35 @@ impl DriverDoctorApp {
                 self.start_pending_health_check_if_ready();
             } else {
                 self.pending_health_check = None;
+            }
+        }
+    }
+
+    fn apply_scan_result(&mut self, scope: ScanDoneScope, scan_result: ScanResult) {
+        match scope {
+            ScanDoneScope::ReplaceRoot => {
+                self.entries = scan_result.entries;
+                self.scan_tree = scan_result.tree;
+            }
+            ScanDoneScope::RefreshSubtree(path) => {
+                let mut refreshed_tree = scan_result.tree;
+                if let Some(root) = &mut self.scan_tree {
+                    if replace_scan_subtree_from_slot(root, &mut refreshed_tree) {
+                        if let Some(entries) =
+                            entries_for_tree_path(root, &PathBuf::from(&self.scan_path))
+                        {
+                            self.entries = entries;
+                            return;
+                        }
+                    }
+                }
+                self.entries = scan_result.entries;
+                self.scan_tree = refreshed_tree;
+                self.scan_status = format!("已刷新 {}", path.display());
+            }
+            ScanDoneScope::FullScan => {
+                self.entries = scan_result.entries;
+                self.scan_tree = None;
             }
         }
     }
@@ -1505,6 +1625,13 @@ impl DriverDoctorApp {
                 ui.label("— 全盘概览");
             } else if !self.scan_path.is_empty() {
                 ui.label(format!("— {} （双击文件夹进入）", self.scan_path));
+                if ui
+                    .add_enabled(!self.scanning, quiet_button("刷新"))
+                    .on_hover_text("重新扫描当前目录及其后代，并同步更新上级统计")
+                    .clicked()
+                {
+                    self.start_refresh_current_path();
+                }
             }
         });
 
@@ -3125,5 +3252,64 @@ mod tests {
         assert!(!table_source.contains("TableBuilder::new"));
         assert!(!table_source.contains("h.interact("));
         assert!(table_source.contains("directory_column_resize_delta("));
+    }
+
+    #[test]
+    fn cached_tree_navigation_uses_children_without_starting_scan() {
+        let root_path = PathBuf::from(r"C:\");
+        let users_path = root_path.join("Users");
+        let admin_path = users_path.join("Admin");
+        let mut app = DriverDoctorApp::default();
+        app.scan_tree = Some(test_node(
+            &root_path,
+            "C:",
+            true,
+            10,
+            vec![test_node(
+                &users_path,
+                "Users",
+                true,
+                10,
+                vec![test_node(&admin_path, "Admin", true, 10, vec![])],
+            )],
+        ));
+
+        assert!(app.show_cached_tree_path(users_path.clone()));
+
+        assert!(!app.scanning);
+        assert_eq!(app.scan_path, users_path.display().to_string());
+        assert_eq!(app.entries.len(), 1);
+        assert_eq!(app.entries[0].path, admin_path);
+    }
+
+    #[test]
+    fn directory_view_exposes_refresh_current_level_action() {
+        let source = include_str!("app.rs");
+
+        assert!(source.contains("start_refresh_current_path("));
+        assert!(source.contains("刷新"));
+        assert!(source.contains("ScanDoneScope::RefreshSubtree"));
+    }
+
+    fn test_node(
+        path: &Path,
+        name: &str,
+        is_dir: bool,
+        size: u64,
+        children: Vec<ScanNode>,
+    ) -> ScanNode {
+        ScanNode {
+            entry: ScanEntry {
+                name: name.into(),
+                path: path.to_path_buf(),
+                is_dir,
+                size,
+                allocated: size,
+                file_count: if is_dir { 0 } else { 1 },
+                folder_count: children.iter().filter(|child| child.entry.is_dir).count() as u64,
+                percent: 0.0,
+            },
+            children,
+        }
     }
 }
