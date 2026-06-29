@@ -1,31 +1,18 @@
 <svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="bg" x1="38" y1="28" x2="220" y2="230" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#253B55"/>
-      <stop offset="1" stop-color="#32606B"/>
+    <linearGradient id="drive" x1="58" y1="70" x2="198" y2="188" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F8FDFF"/>
+      <stop offset="1" stop-color="#D7E8EE"/>
     </linearGradient>
-    <linearGradient id="drive" x1="58" y1="72" x2="194" y2="178" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#FFFFFF"/>
-      <stop offset="1" stop-color="#DCEAF0"/>
-    </linearGradient>
-    <filter id="softShadow" x="28" y="48" width="196" height="160" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
-      <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#0C2532" flood-opacity=".28"/>
-    </filter>
   </defs>
 
-  <rect x="12" y="12" width="232" height="232" rx="52" fill="url(#bg)"/>
-  <path d="M64 63c0-17 25-17 25 0v26m78-26c0-17 25-17 25 0v26" stroke="#8AE7DE" stroke-width="10" stroke-linecap="round"/>
-
-  <g filter="url(#softShadow)">
-    <rect x="47" y="72" width="162" height="108" rx="24" fill="url(#drive)"/>
-    <rect x="47" y="72" width="162" height="108" rx="24" stroke="#123247" stroke-width="8"/>
-    <rect x="73" y="104" width="110" height="16" rx="8" fill="#BFD5DF"/>
-    <path d="M72 145h29l14-25 22 53 18-35h30" stroke="#13CFC3" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="74" cy="145" r="9" fill="#F4C84D"/>
-  </g>
-
-  <path d="M83 86v28c0 32 90 32 90 0V86" stroke="#8AE7DE" stroke-width="10" stroke-linecap="round"/>
-  <path d="M173 142c17 0 31 14 31 31s-14 31-31 31" stroke="#8AE7DE" stroke-width="10" stroke-linecap="round"/>
-  <circle cx="173" cy="204" r="15" fill="#123247" stroke="#13CFC3" stroke-width="9"/>
-  <circle cx="173" cy="204" r="4" fill="#F4C84D"/>
+  <rect width="256" height="256" rx="48" fill="#2C5968"/>
+  <rect x="44" y="66" width="168" height="124" rx="26" fill="#123247" opacity=".36"/>
+  <rect x="52" y="58" width="152" height="124" rx="24" fill="url(#drive)"/>
+  <rect x="52" y="58" width="152" height="124" rx="24" stroke="#102D40" stroke-width="10"/>
+  <rect x="78" y="88" width="100" height="16" rx="8" fill="#BBD1DA"/>
+  <rect x="78" y="136" width="100" height="16" rx="8" fill="#BBD1DA"/>
+  <path d="M66 122h38l16-28 24 62 17-34h29" stroke="#12CFC3" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="70" cy="122" r="10" fill="#F3C84B"/>
+  <circle cx="186" cy="122" r="10" fill="#12CFC3"/>
 </svg>
